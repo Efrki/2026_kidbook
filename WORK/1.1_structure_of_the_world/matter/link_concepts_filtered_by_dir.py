@@ -2,6 +2,7 @@ import os
 import json
 import re
 import pymorphy2
+import urllib.parse
 from difflib import unified_diff
 
 # --- Configuration ---
@@ -102,8 +103,20 @@ def load_concepts(work_dir):
                         concept_id = concept.get('id')
                         concept_name = concept.get('name')
                         md_file_rel_path = concept.get('file')
-                        if not all([concept_id, concept_name, md_file_rel_path]):
+                        # Проверяем наличие всех необходимых полей для создания ссылки
+                        if not (concept_id and concept_name and md_file_rel_path):
+                            # print(f"Debug: Skipping concept '{concept_name}' from {json_path} due to missing 'id', 'name', or 'file'.")
                             continue
+
+                        md_file_abs_path = os.path.join(BASE_DIR, md_file_rel_path)
+                        # Дополнительная проверка: существует ли файл, на который ссылается понятие
+                        if not os.path.exists(md_file_abs_path):
+                            print(f"Warning: Concept '{concept_name}' in {json_path} points to non-existent file: {md_file_abs_path}. Skipping this concept for linking.")
+                            continue
+
+                        # Собираем все исходные формы (название понятия и его леммы)
+                        raw_forms_to_process = {concept_name}
+                        raw_forms_to_process.update(concept.get('lemmas', []))
 
                         md_file_abs_path = os.path.join(BASE_DIR, md_file_rel_path)
 
@@ -241,7 +254,9 @@ def process_markdown_file(md_file_path, concept_data, all_lemmas_for_matching):
 
                     # Строим ссылку, сохраняя оригинальный падеж и форму
                     relative_link_path = os.path.relpath(concept_info['file'], os.path.dirname(md_file_path))
-                    link = f"[{original_matched_text}]({relative_link_path})"
+                    # URL-кодируем путь, чтобы правильно обрабатывать пробелы и спецсимволы
+                    encoded_relative_link_path = urllib.parse.quote(relative_link_path.replace('\\', '/')) # Заменяем обратные слеши на прямые для URL
+                    link = f"[{original_matched_text}]({encoded_relative_link_path})"
                     replacements.append((match_start_idx, match_end_idx, link))
                     linked_spans.append((match_start_idx, match_end_idx)) # Отмечаем эту область как связанную
         
